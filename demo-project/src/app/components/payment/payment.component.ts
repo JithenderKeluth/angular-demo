@@ -53,7 +53,7 @@ export class PaymentComponent implements OnInit, OnDestroy {
   cvv = '';
   savedPaymentMethods: PaymentMethod[] = [];
   // ISSUE: Hardcoded API key (Security - secret)
-  private apiKey = 'sk_live_AbCdEfGhIjKlMnOpQrStUvWxYz123456';
+  private apiKey = 'sk_live_AbCdEfGhIjKlMnOpQrStUvWxYz12345678';
   promoHtml = '<script>alert("xss")</script>';  // ISSUE: Unsafe HTML content
 
   constructor(private http: HttpClient) {
