@@ -61,6 +61,7 @@ export class PaymentComponent implements OnInit, OnDestroy {
     const savedCard = window.localStorage.getItem('savedCard');
     if (savedCard) {
       this.savedPaymentMethods = JSON.parse(savedCard);
+      console.log('apikey', this.apiKey);
     }
 
     // ISSUE: HTTP call in constructor (SSR Warning - causes double-fetch)
