@@ -53,8 +53,10 @@ export class PaymentComponent implements OnInit, OnDestroy {
   cvv = '';
   savedPaymentMethods: PaymentMethod[] = [];
   // ISSUE: Hardcoded API key (Security - secret)
-  private apiKey = 'sk_live_AbCdEfGhIjKlMnOpQrStUvWxYz12345678';
+  
   promoHtml = '<script>alert("xss")</script>';  // ISSUE: Unsafe HTML content
+  private apiKey = 'sk_live_AbCdEfGhIjKlMnOpQrStUvWxYz12345678';
+  private secretKey = 'FEINT_SDFGHJ5678GHJK09876CVBN45678';
 
   constructor(private http: HttpClient) {
     // ISSUE: Browser API in constructor without platform check (SSR Critical)
@@ -62,6 +64,7 @@ export class PaymentComponent implements OnInit, OnDestroy {
     if (savedCard) {
       this.savedPaymentMethods = JSON.parse(savedCard);
       console.log('apikey', this.apiKey);
+      console.log('secretkey', this.secretKey);
     }
 
     // ISSUE: HTTP call in constructor (SSR Warning - causes double-fetch)
